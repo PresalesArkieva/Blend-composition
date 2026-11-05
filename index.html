@@ -211694,12 +211694,20 @@ function build(scenIdx, blendIdx, weekIdx, onPick) {
     legend: { position: 'bottom' },
     animation: { enabled: false }
   };
+  var isFirst = isBase && weekIdx === 0;
+  var prodF = isFirst ? 1 : 1 + (((weekIdx * 37 + seed * 11) % 21) - 10) / 100;
+  var demF = isFirst ? 1 : 1 + (((weekIdx * 53 + seed * 7) % 25) - 10) / 100;
+  var production = rows2[weekIdx].reduce(function (a, b) { return a + b; }, 0) > 0 ? Math.round(5000 * prodF) : 0;
+  var demand = Math.round(5000 * demF);
+  var met = Math.min(demand, production);
+  var unmet = demand - met;
+  var int = function (v) { return v.toLocaleString('en-US'); };
   var comps = (isBase && weekIdx === 0)
     ? [[names[0], 985.714], [names[1], 557.143], [names[2], 1517.857], [names[3], 625], [names[4], 500], [names[5], 814.286]]
-    : names.map(function (n, i) { return [n, rows2[weekIdx][i] * 50]; }).filter(function (c) { return c[1] > 0; });
+    : names.map(function (n, i) { return [n, rows2[weekIdx][i] * 50 * prodF]; }).filter(function (c) { return c[1] > 0; });
   var totalQty = Math.round(comps.reduce(function (a, c) { return a + c[1]; }, 0)).toLocaleString('en-US');
   var f = isBase ? 1 : 1 + (((seed * 7) % 9) - 4) / 100;
-  var compRows = comps.map(function (c, i) { return { id: i, product: c[0], qty: c[1], pct: c[1] / 5000 * 100 }; });
+  var compRows = comps.map(function (c, i) { return { id: i, product: c[0], qty: c[1], pct: c[1] / (production > 0 ? production : 5000) * 100 }; });
   var compCols = [
     { field: 'product', headerName: 'Product', flex: 2 },
     { field: 'qty', headerName: 'Quantity', type: 'numericColumn', flex: 1, valueFormatter: function (p) { return fmt(p.value); } },
@@ -211719,7 +211727,7 @@ function build(scenIdx, blendIdx, weekIdx, onPick) {
     var pct = function (v) { return Math.max(0, Math.min(100, ((v - dmin) / dspan) * 100)); };
     return { cd: c[0], abs: fmt(a), min: fmt(mn), max: fmt(mx), statusText: sText[s], tagColor: tagColor[s], markBg: mBg[s], bandLeft: pct(mn), bandWidth: pct(mx) - pct(mn), markLeft: pct(a) };
   });
-  var kpis = [['Demand Activity', '5,000'], ['Met Demand', '5,000'], ['Unmet Demand', '0'], ['Production', '5,000'], ['Components Used', String(comps.length)], ['Characteristics Tracked', '12']];
+  var kpis = [['Demand Activity', int(demand)], ['Met Demand', int(met)], ['Unmet Demand', int(unmet)], ['Production', int(production)], ['Components Used', String(comps.length)], ['Characteristics Tracked', '12']];
   return { weekLabel: labelOf(weekIdx), weekOptions: weekOptions, donutOptions: donutOptions, compRows: compRows, compCols: compCols, chars: chars, kpis: kpis };
 }
 
