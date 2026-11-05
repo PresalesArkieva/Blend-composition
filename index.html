@@ -211663,7 +211663,9 @@ function statusFor(a, mn, mx) {
   return 'risk';
 }
 
-function build(scenIdx, blendIdx) {
+function labelOf(wi) { var d = new Date(start + wi * 7 * 86400000); return String(d.getUTCDate()).padStart(2, '0') + '-' + mon[d.getUTCMonth()] + '-' + d.getUTCFullYear(); }
+
+function build(scenIdx, blendIdx, weekIdx, onPick) {
   var isBase = blendIdx === 0 && scenIdx === 1;
   var seed = blendIdx * 5 + scenIdx;
   var names = baseNames.map(function (_, i) { return baseNames[(i + blendIdx) % 9]; });
@@ -211678,13 +211680,13 @@ function build(scenIdx, blendIdx) {
   }
   var data = rows2.map(function (r, wi) {
     var d = new Date(start + wi * 7 * 86400000);
-    var o = { week: String(d.getUTCDate()).padStart(2, '0') + '-' + mon[d.getUTCMonth()] };
+    var o = { idx: wi, week: String(d.getUTCDate()).padStart(2, '0') + '-' + mon[d.getUTCMonth()] };
     keys.forEach(function (k, i) { o[k] = r[i]; });
     return o;
   });
   var weekOptions = {
     data: data,
-    series: keys.map(function (k, i) { return { type: 'bar', xKey: 'week', yKey: k, yName: names[i], stacked: true, fill: SOFT[i], stroke: SOFT[i] }; }),
+    series: keys.map(function (k, i) { return { type: 'bar', xKey: 'week', yKey: k, yName: names[i], stacked: true, fill: SOFT[i], stroke: SOFT[i], listeners: { seriesNodeClick: function (ev) { if (ev && ev.datum && ev.datum.idx !== undefined) onPick(ev.datum.idx); } }, itemStyler: function (p) { return { fillOpacity: p.datum.idx === weekIdx ? 1 : 0.6 }; } }; }),
     axes: [
       { type: 'category', position: 'bottom', label: { rotation: -90, fontSize: 10 } },
       { type: 'number', position: 'left', min: 0, max: 100, title: { text: 'Share of production (%)' }, label: { formatter: function (p) { return p.value + '%'; } }, interval: { step: 20 } }
@@ -211692,9 +211694,10 @@ function build(scenIdx, blendIdx) {
     legend: { position: 'bottom' },
     animation: { enabled: false }
   };
-  var comps = isBase
+  var comps = (isBase && weekIdx === 0)
     ? [[names[0], 985.714], [names[1], 557.143], [names[2], 1517.857], [names[3], 625], [names[4], 500], [names[5], 814.286]]
-    : names.map(function (n, i) { return [n, rows2[0][i] * 50]; }).filter(function (c) { return c[1] > 0; });
+    : names.map(function (n, i) { return [n, rows2[weekIdx][i] * 50]; }).filter(function (c) { return c[1] > 0; });
+  var totalQty = Math.round(comps.reduce(function (a, c) { return a + c[1]; }, 0)).toLocaleString('en-US');
   var f = isBase ? 1 : 1 + (((seed * 7) % 9) - 4) / 100;
   var compRows = comps.map(function (c, i) { return { id: i, product: c[0], qty: c[1], pct: c[1] / 5000 * 100 }; });
   var compCols = [
@@ -211702,10 +211705,10 @@ function build(scenIdx, blendIdx) {
     { field: 'qty', headerName: 'Quantity', type: 'numericColumn', flex: 1, valueFormatter: function (p) { return fmt(p.value); } },
     { field: 'pct', headerName: '% of Production', type: 'numericColumn', flex: 1, valueFormatter: function (p) { return Number(p.value).toFixed(1) + '%'; } }
   ];
-  var fills = names.map(function (n) { return SOFT[names.indexOf(n)]; });
+  var fills = comps.length ? comps.map(function (c) { return SOFT[names.indexOf(c[0])]; }) : ['#d9d9d9'];
   var donutOptions = {
-    data: compRows,
-    series: [{ type: 'donut', fills: fills, strokes: fills, angleKey: 'pct', calloutLabelKey: 'product', legendItemKey: 'product', innerRadiusRatio: 0.6, sectorLabelKey: 'pct', sectorLabel: { color: 'white', fontWeight: 'bold', formatter: function (p) { return Number(p.value).toFixed(1) + '%'; } }, calloutLabel: { enabled: false }, innerLabels: [{ text: '5,000', fontSize: 22, fontWeight: 'bold' }, { text: 'Production', fontSize: 12 }] }],
+    data: compRows.length ? compRows : [{ product: 'No production', pct: 100 }],
+    series: [{ type: 'donut', fills: fills, strokes: fills, angleKey: 'pct', calloutLabelKey: 'product', legendItemKey: 'product', innerRadiusRatio: 0.6, sectorLabelKey: 'pct', sectorLabel: { color: 'white', fontWeight: 'bold', formatter: function (p) { return Number(p.value).toFixed(1) + '%'; } }, calloutLabel: { enabled: false }, innerLabels: [{ text: totalQty, fontSize: 22, fontWeight: 'bold' }, { text: 'Production', fontSize: 12 }] }],
     legend: { position: 'bottom' },
     animation: { enabled: false }
   };
@@ -211717,7 +211720,7 @@ function build(scenIdx, blendIdx) {
     return { cd: c[0], abs: fmt(a), min: fmt(mn), max: fmt(mx), statusText: sText[s], tagColor: tagColor[s], markBg: mBg[s], bandLeft: pct(mn), bandWidth: pct(mx) - pct(mn), markLeft: pct(a) };
   });
   var kpis = [['Demand Activity', '5,000'], ['Met Demand', '5,000'], ['Unmet Demand', '0'], ['Production', '5,000'], ['Components Used', String(comps.length)], ['Characteristics Tracked', '12']];
-  return { weekOptions: weekOptions, donutOptions: donutOptions, compRows: compRows, compCols: compCols, chars: chars, kpis: kpis };
+  return { weekLabel: labelOf(weekIdx), weekOptions: weekOptions, donutOptions: donutOptions, compRows: compRows, compCols: compCols, chars: chars, kpis: kpis };
 }
 
 var scenarios = scenarioNames.map(function (n) { return { id: n, name: n }; });
@@ -211727,8 +211730,10 @@ var gray = 'var(--ark-typography-subtext)', head = 'var(--ark-typography-headlin
 function Card(props) { return h(S.Card, { size: 'small', title: props.title, style: props.style }, props.children); }
 
 function App() {
-  var st = useState({ scenario: 1, blend: 0 }), sel = st[0], setSel = st[1];
-  var d = useMemo(function () { return build(sel.scenario, sel.blend); }, [sel.scenario, sel.blend]);
+  var st = useState({ scenario: 1, blend: 0, week: 0 }), sel = st[0], setSel = st[1];
+  var d = useMemo(function () {
+    return build(sel.scenario, sel.blend, sel.week, function (wk) { setSel(function (p) { return { scenario: p.scenario, blend: p.blend, week: wk }; }); });
+  }, [sel.scenario, sel.blend, sel.week]);
   var initial = useMemo(function () { return { scenario: scenarioNames[1], blend: blendNames[0] }; }, []);
 
   return h(S.ArkievaProvider, null,
@@ -211740,9 +211745,9 @@ function App() {
         h(S.Form, { layout: 'vertical', initialValues: initial },
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 16 } },
             h('div', { style: { flex: '1 1 280px', minWidth: 0 } },
-              h(S.SelectFormItem, { name: 'scenario', label: 'Scenario', items: scenarios, required: false, allowClear: false, onChange: function (v) { setSel({ scenario: Math.max(0, scenarioNames.indexOf(v)), blend: sel.blend }); } })),
+              h(S.SelectFormItem, { name: 'scenario', label: 'Scenario', items: scenarios, required: false, allowClear: false, onChange: function (v) { setSel({ scenario: Math.max(0, scenarioNames.indexOf(v)), blend: sel.blend, week: sel.week }); } })),
             h('div', { style: { flex: '1 1 280px', minWidth: 0 } },
-              h(S.SelectFormItem, { name: 'blend', label: 'Blend', items: blends, required: false, allowClear: false, onChange: function (v) { setSel({ scenario: sel.scenario, blend: Math.max(0, blendNames.indexOf(v)) }); } }))))),
+              h(S.SelectFormItem, { name: 'blend', label: 'Blend', items: blends, required: false, allowClear: false, onChange: function (v) { setSel({ scenario: sel.scenario, blend: Math.max(0, blendNames.indexOf(v)), week: sel.week }); } }))))),
 
       h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 } },
         d.kpis.map(function (k) {
@@ -211753,15 +211758,18 @@ function App() {
         })),
 
       h(Card, { title: 'Blend Composition by Week' },
-        h('div', { style: { fontSize: 12, color: gray, marginBottom: 8 } }, blendNames[sel.blend] + ' · ' + scenarioNames[sel.scenario] + ': component share of production across all weeks (%)'),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 } },
+          h('label', { htmlFor: 'weekSelect', style: { fontSize: 14, fontWeight: 500, color: head } }, 'Week'),
+          h('select', { id: 'weekSelect', value: String(sel.week), onChange: function (e) { var wk = parseInt(e.target.value, 10); setSel(function (p) { return { scenario: p.scenario, blend: p.blend, week: wk }; }); }, style: { height: 32, padding: '0 8px', font: '400 14px Roboto, Arial, sans-serif', color: '#333333', background: '#ffffff', border: '1px solid #d9d9d9', borderRadius: 6, minWidth: 170 } },
+            rows.map(function (_, wi) { return h('option', { key: wi, value: String(wi) }, labelOf(wi)); }))),
         h('div', { style: { height: 380 } }, h(S.Chart, { options: d.weekOptions }))),
 
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'stretch' } },
         h('div', { style: { flex: '1 1 360px', minWidth: 0 } },
-          h(Card, { title: 'Component distribution — week of 02-Nov-2026', style: { height: '100%' } },
+          h(Card, { title: 'Component distribution — week of ' + d.weekLabel, style: { height: '100%' } },
             h('div', { style: { height: 300 } }, h(S.Chart, { options: d.donutOptions })))),
         h('div', { style: { flex: '1.4 1 440px', minWidth: 0 } },
-          h(Card, { title: 'Selected Week: Composition Detail — 02-Nov-2026', style: { height: '100%' } },
+          h(Card, { title: 'Selected Week: Composition Detail — ' + d.weekLabel, style: { height: '100%' } },
             h('div', { style: { height: 300 } }, h(S.Grid, { rowData: d.compRows, columnDefs: d.compCols, exportPrefix: 'Blend composition' }))))),
 
       h(Card, { title: 'Blend Characteristics' },
